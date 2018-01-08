@@ -79,14 +79,15 @@ plt.plot(0, within_schema[0] - across_schema[0],
          marker='o', markersize=6)
 plt.plot(1, within_schema_crossmod[0] - across_schema_crossmod[0],
          marker='o', markersize=6)
-plt.violinplot(within_schema[1:] - across_schema[1:],
-               positions=[0], showextrema=False)
-plt.violinplot(within_schema_crossmod[1:] - across_schema_crossmod[1:],
-               positions=[1], showextrema=False)
-plt.plot([-0.5, 1.5], [0, 0])
+vp = plt.violinplot(within_schema[1:] - across_schema[1:],
+                    positions=[0], showextrema=False)
+vp['bodies'][0].set_color('0.8')
+vp = plt.violinplot(within_schema_crossmod[1:] - across_schema_crossmod[1:],
+                    positions=[1], showextrema=False)
+vp['bodies'][0].set_color('0.8')
 plt.ylabel('Event correlation W vs A (r)')
 plt.ylim([0, 0.1])
-plt.legend(['All pairs', 'Cross-mod'])
+plt.xticks([0, 1], ['All pairs', 'Cross-mod'])
 plt.savefig('../output/Fig2.png')
 
 print(' ')
