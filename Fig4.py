@@ -58,6 +58,9 @@ for s_i, s in enumerate(['R', 'A']):
 
 plt.figure()
 plt.plot(np.arange(2, max_ev+1), nullZ(acc.mean(2).mean(1)))
+plt.plot([2, 6], [2.876, 2.876], linestyle='--', color='black')
+plt.xticks(np.arange(2, max_ev+1))
 plt.ylabel('Match to annotations (z)')
 plt.xlabel('Number of events')
+plt.legend([ROI, 'p<0.01'])
 plt.savefig('../output/Fig4.png')
