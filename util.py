@@ -15,17 +15,6 @@ def nullZ(X):
     return Z
 
 
-# Permute items with the same label
-def perm_groups(labels):
-    groups = ''.join(set(labels))
-    perm = np.zeros(len(labels), dtype=int)
-    for g in groups:
-        group_inds = np.where([g == x for x in labels])[0]
-        perm[group_inds] = np.random.permutation(group_inds)
-
-    return perm
-
-
 # Run SRM on list of concatenated stories, then break into stories
 def SRM_from_list(native_subj, story_breaks, story_names, nFeatures):
     srm = brainiak.funcalign.srm.SRM(features=nFeatures)

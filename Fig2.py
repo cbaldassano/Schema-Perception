@@ -2,7 +2,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import deepdish as dd
 from scipy.stats import zscore, norm
-from util import nullZ, perm_groups, SRM
+from util import nullZ, SRM
 from deconvolve import deconv
 from stimulus_annot import modality, mask, design, stories, nStories
 import sys
@@ -21,6 +21,7 @@ D = SRM(native_D, SRM_features)
 dim = D[stories[0]].shape[0]
 nSubj = D[stories[0]].shape[2]
 
+print('  Computing correlations...')
 # Compute event correlations between random splits of data
 nSplit = 10
 story_corr = np.zeros((nStories, nStories, nSplit))
@@ -74,7 +75,12 @@ for p in range(nPerm+1):
     within_schema_crossmod[p] = np.mean(SC_perm[mask == 3])
     across_schema_crossmod[p] = np.mean(SC_perm[mask == 5])
 
-    nextperm = perm_groups(modality)
+    # Permute only within modalities
+    groups = ''.join(set(modality))
+    nextperm = np.zeros(len(modality), dtype=int)
+    for g in groups:
+        group_inds = np.where([g == x for x in modality])[0]
+        nextperm[group_inds] = np.random.permutation(group_inds)
     SC_perm = story_corr[np.ix_(nextperm, nextperm)]
 print('  ' + ROI + ' cross-mod p=' +
       str(norm.sf(nullZ(within_schema_crossmod - across_schema_crossmod))))
