@@ -2,16 +2,22 @@ import numpy as np
 from matplotlib import pyplot as plt
 import deepdish as dd
 from scipy.stats import zscore, norm
-from util import nullZ, perm_groups
+from util import nullZ, perm_groups, SRM
 from deconvolve import deconv
 from stimulus_annot import modality, mask, design, stories, nStories
+import sys
 
 print('Running Fig 2 analysis...')
 nPerm = 1000
-ROI = 'mPFC'
+SRM_features = 100
+ROI = sys.argv[1]
 
 # Load data
-D = dd.io.load('../data/' + ROI + '_perception_SRM_100.h5')
+print('  Loading ' + ROI + '...')
+native_D = dd.io.load('../data/' + ROI + '.h5')
+print('  Applying SRM...')
+D = SRM(native_D, SRM_features)
+
 dim = D[stories[0]].shape[0]
 nSubj = D[stories[0]].shape[2]
 
@@ -88,6 +94,6 @@ vp['bodies'][0].set_color('0.8')
 plt.ylabel('Event correlation W vs A (r)')
 plt.ylim([0, 0.1])
 plt.xticks([0, 1], ['All pairs', 'Cross-mod'])
-plt.savefig('../output/Fig2.png')
+plt.savefig('../results/Fig2_' + ROI + '.png')
 
 print(' ')

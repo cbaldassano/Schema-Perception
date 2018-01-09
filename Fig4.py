@@ -1,19 +1,24 @@
 from matplotlib import pyplot as plt
 import numpy as np
 import deepdish as dd
-from util import nullZ
+from util import nullZ, SRM
 import brainiak.eventseg.event
 from stimulus_annot import nStories, schema_type, design, stories
+import sys
 
 print('Running Fig 4 analysis...')
 nPerm = 1000
-ROI = 'mPFC'
+SRM_features = 100
+ROI = sys.argv[1]
 
 story_start_TR = 8  # First TR after count-down stimulus
 max_ev = 6  # Max number of events to try
 
 # Load data
-D = dd.io.load('../data/' + ROI + '_perception_SRM_100.h5')
+print('  Loading ' + ROI + '...')
+native_D = dd.io.load('../data/' + ROI + '.h5')
+print('  Applying SRM...')
+D = SRM(native_D, SRM_features)
 
 np.random.seed(0)
 acc = np.zeros((max_ev-1, 2, (8*8 - 8)//2, nPerm+1))
@@ -63,4 +68,4 @@ plt.xticks(np.arange(2, max_ev+1))
 plt.ylabel('Match to annotations (z)')
 plt.xlabel('Number of events')
 plt.legend([ROI, 'p<0.01'])
-plt.savefig('../output/Fig4.png')
+plt.savefig('../results/Fig4_' + ROI + '.png')
