@@ -6,10 +6,10 @@ import brainiak.eventseg.event
 from stimulus_annot import nStories, schema_type, design, stories
 import sys
 
-print('Running Fig 4 analysis...')
 nPerm = 1000
 SRM_features = 100
 ROI = sys.argv[1]
+print('Running Fig 4 analysis for ' + ROI + '...')
 
 story_start_TR = 8  # First TR after count-down stimulus
 max_ev = 6  # Max number of events to try
@@ -69,3 +69,4 @@ plt.ylabel('Match to annotations (z)')
 plt.xlabel('Number of events')
 plt.legend([ROI, 'p<0.01'])
 plt.savefig('../results/Fig4_' + ROI + '.png')
+print(' ')

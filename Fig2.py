@@ -7,10 +7,10 @@ from deconvolve import deconv
 from stimulus_annot import modality, mask, design, stories, nStories
 import sys
 
-print('Running Fig 2 analysis...')
 nPerm = 1000
 SRM_features = 100
 ROI = sys.argv[1]
+print('Running Fig 2 analysis for ' + ROI + '...')
 
 # Load data
 print('  Loading ' + ROI + '...')
@@ -98,7 +98,7 @@ vp = plt.violinplot(within_schema_crossmod[1:] - across_schema_crossmod[1:],
                     positions=[1], showextrema=False)
 vp['bodies'][0].set_color('0.8')
 plt.ylabel('Event correlation W vs A (r)')
-plt.ylim([0, 0.1])
+plt.ylim([0, 0.15])
 plt.xticks([0, 1], ['All pairs', 'Cross-mod'])
 plt.savefig('../results/Fig2_' + ROI + '.png')
 

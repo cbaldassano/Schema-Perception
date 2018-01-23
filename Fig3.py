@@ -8,10 +8,10 @@ from util import data_list, SRM_from_list
 from matplotlib import pyplot as plt
 import sys
 
-print('Running Fig 3 analysis...')
 ROI = sys.argv[1]
 nBoot = int(sys.argv[2])
 SRM_features = 100
+print('Running Fig 3 analysis for ' + ROI + '...')
 
 # Load data
 print('  Loading ' + ROI + '...')
