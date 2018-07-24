@@ -1,72 +1,97 @@
-from matplotlib import pyplot as plt
 import numpy as np
+from matplotlib import pyplot as plt
 import deepdish as dd
-from util import nullZ, SRM
-import brainiak.eventseg.event
-from stimulus_annot import nStories, schema_type, design, stories
+from scipy.stats import zscore, norm
+from util import nullZ
+from deconvolve import deconv
+from stimulus_annot import mask, design_intact, design_scrambled, \
+    design_scrambled_event, design_scrambled_story, stories, nStories, clips
 import sys
 
-nPerm = 1000
-SRM_features = 100
 ROI = sys.argv[1]
-print('Running Fig 4 analysis for ' + ROI + '...')
+nPerm = 1000
 
-story_start_TR = 8  # First TR after count-down stimulus
-max_ev = 6  # Max number of events to try
+print('Running Fig 4 analysis for ' + ROI + '...')
 
 # Load data
 print('  Loading ' + ROI + '...')
-native_D = dd.io.load('../data/' + ROI + '.h5')
-print('  Applying SRM...')
-D = SRM(native_D, SRM_features)
+D_scrambled = dd.io.load('../data/Control/' + ROI + '.h5')
+D_intact = dd.io.load('../data/Main/' + ROI + '.h5')
 
+dim = D_intact[stories[0]].shape[0]
+nSubj_intact = D_intact[stories[0]].shape[2]
+nSubj_scrambled = D_scrambled[clips[0]].shape[2]
+
+# Regression coefficients for scrambled stimuli
+S_beta = np.zeros((nStories, dim, 4))
+for i in range(len(clips)):
+    S_mean = np.nanmean(D_scrambled[clips[i]], axis=2)
+    beta = zscore(deconv(S_mean, design_scrambled[i]), axis=0, ddof=1)
+    S_beta[design_scrambled_story[i], :, design_scrambled_event[i]] = beta.T
+
+# Compute event correlations between random splits of intact with scrambled
+nSplit = 10
+story_corr_II = np.zeros((nStories, nStories, nSplit))
+story_corr_IS = np.zeros((nStories, nStories, nSplit))
 np.random.seed(0)
-acc = np.zeros((max_ev-1, 2, (8*8 - 8)//2, nPerm+1))
-for s_i, s in enumerate(['R', 'A']):
-    # Get ground truth event labels from design matrices
-    design_schema = [M[story_start_TR:, :] for M in design[schema_type == s]]
-    gt_labels = np.empty(nStories//2, dtype='O')
-    for i in range(nStories//2):
-        gt_labels[i] = np.argmax(design_schema[i], axis=1)
+for p in range(nSplit):
+    I1_beta = np.zeros((nStories, dim, 4))
+    I2_beta = np.zeros((nStories, dim, 4))
 
-    # Fit event models with varying numbers of events
-    for n_ev in range(2, max_ev+1):
-        print('  Fitting schema ' + s + ' with ' + str(n_ev) + ' events')
-        ev_schema = brainiak.eventseg.event.EventSegment(n_ev)
-        ev_schema.fit([D[k][:, story_start_TR:, :].mean(2).T
-                       for k in np.array(stories)[schema_type == s]])
+    # Deconvolve event representations
+    group_perm = np.random.permutation(nSubj_intact)
+    for i in range(nStories):
+        D_story = D_intact[stories[i]]
+        I1 = D_story[:, :, group_perm[:nSubj_scrambled]]
+        I2 = D_story[:, :, group_perm[nSubj_scrambled:(2*nSubj_scrambled)]]
+        I1_mean = np.nanmean(I1, axis=2)
+        I2_mean = np.nanmean(I2, axis=2)
+        I1_beta[i, :, :] = zscore(deconv(I1_mean, design_intact[i])[:, 1:],
+                                  axis=0, ddof=1)
+        I2_beta[i, :, :] = zscore(deconv(I2_mean, design_intact[i])[:, 1:],
+                                  axis=0, ddof=1)
 
-        # Get predicted labels (and null labels)
-        pred_labels = np.empty(nStories//2, dtype='O')
-        for i in range(nStories//2):
-            pred_labels[i] = np.zeros((nPerm+1, design_schema[i].shape[0]))
-            pred_labels[i][0, :] = np.argmax(ev_schema.segments_[i], axis=1)
-            for p in range(nPerm):
-                bounds = np.random.choice(pred_labels[i].shape[1],
-                                          size=n_ev-1, replace=False)
-                pred_labels[i][p+1, bounds] = 1
-                pred_labels[i][p+1, :] = np.cumsum(pred_labels[i][p+1, :])
+    # Correlate each event between all stories
+    for ev in range(4):
+        story_corr_II[:, :, p] += (1/4) * \
+            np.dot(I1_beta[:, :, ev], I2_beta[:, :, ev].T)/(dim-1)
+        story_corr_IS[:, :, p] += (1/4) * \
+            np.dot(I1_beta[:, :, ev], S_beta[:, :, ev].T)/(dim-1)
 
-        # Compute between-story correspondence accuracy
-        pair_i = 0
-        for i in range(nStories//2):
-            for j in range(i+1, nStories//2):
-                gt_pair = gt_labels[i][:, np.newaxis] == \
-                          gt_labels[j][np.newaxis, :]
-                for p in range(nPerm+1):
-                    pred_pair = pred_labels[i][p, :, np.newaxis] == \
-                                pred_labels[j][p, np.newaxis, :]
-                    acc[n_ev-2, s_i, pair_i, p] = \
-                        (np.logical_and(gt_pair, pred_pair).sum() /
-                         np.logical_or(gt_pair, pred_pair).sum())
-                pair_i += 1
 
+# Collapse across splits and symmetrize
+story_corr_II = story_corr_II.mean(2)
+story_corr_IS = story_corr_IS.mean(2)
+story_corr_II = (story_corr_II + story_corr_II.T)/2
+story_corr_IS = (story_corr_IS + story_corr_IS.T)/2
+
+
+# Compute true and null similarity for all pairs
+WvA_diff = np.zeros(nPerm+1)
+np.random.seed(0)
+SCII_p = story_corr_II.copy()
+SCIS_p = story_corr_IS.copy()
+for p in range(nPerm+1):
+    WvA_II = np.mean([SCII_p[mask == 2].mean(), SCII_p[mask == 3].mean()]) - \
+             np.mean([SCII_p[mask == 4].mean(), SCII_p[mask == 5].mean()])
+    WvA_IS = np.mean([SCIS_p[mask == 2].mean(), SCIS_p[mask == 3].mean()]) - \
+             np.mean([SCIS_p[mask == 4].mean(), SCIS_p[mask == 5].mean()])
+
+    WvA_diff[p] = WvA_II - WvA_IS
+
+    nextperm = np.random.permutation(story_corr_II.shape[0])
+    SCII_p = story_corr_II[np.ix_(nextperm, nextperm)]
+    SCIS_p = story_corr_IS[np.ix_(nextperm, nextperm)]
+
+print('  WvA_diff:' + str(norm.sf(nullZ(WvA_diff))))
+
+# Plot Fig 4 results and null distribution
 plt.figure()
-plt.plot(np.arange(2, max_ev+1), nullZ(acc.mean(2).mean(1)))
-plt.plot([2, 6], [2.876, 2.876], linestyle='--', color='black')
-plt.xticks(np.arange(2, max_ev+1))
-plt.ylabel('Match to annotations (z)')
-plt.xlabel('Number of events')
-plt.legend([ROI, 'p<0.01'])
+plt.plot(0, WvA_diff[0], marker='o', markersize=6)
+vp = plt.violinplot(WvA_diff[1:], positions=[0], showextrema=False)
+vp['bodies'][0].set_color('0.8')
+plt.ylabel('Schema effect intact minus scrambled (r)')
+plt.xticks([0], [ROI])
 plt.savefig('../results/Fig4_' + ROI + '.png')
+
 print(' ')
