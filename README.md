@@ -3,14 +3,14 @@ This code repository demonstrates the analyses described in "Representation of r
 
 The default run.sh runs all the ROI analyses from the paper.
 
-## Fig 2 and 2-1 analysis
-Fig2.py implements the event pattern correlation analysis for the main experiment (generating Figures 2 and 2-1 for one ROI). It has one command line argument: the name of the ROI to be analyzed.
+## Fig 2 and 3 analysis
+Fig2_3.py implements the event pattern correlation analysis for the main experiment (generating Figures 2 and 3 for one ROI). It has one command line argument: the name of the ROI to be analyzed.
 
-## Fig 4 analysis
-Fig4.py implements the event pattern correlation analysis for the scrambled experiment (generating Figure 5 for one ROI). It has one command line argument: the name of the ROI to be analyzed.
-
-## Fig 5 and 5-1 analysis
-Fig5.py implements the schema classification analysis (generating Figures 5 and 5-1 for one ROI). It has two command line arguments: the name of the ROI to be analyzed and the number of bootstrap samples to compute.
+## Fig 5 analysis
+Fig5.py implements the event pattern correlation analysis for the scrambled experiment (generating Figure 5 for one ROI). It has one command line argument: the name of the ROI to be analyzed.
 
 ## Fig 6 analysis
-Fig6.py implements the unsupervised alignment analysis (generating Figure 6 for one ROI). It has one command line argument: the name of the ROI to be analyzed.
+Fig6.py implements the schema classification analysis (generating Figure 6 for one ROI). It has two command line arguments: the name of the ROI to be analyzed and the number of bootstrap samples to compute.
+
+## Fig 7 analysis
+Fig7.py implements the unsupervised alignment analysis (generating Figure 7 for one ROI). It has one command line argument: the name of the ROI to be analyzed.

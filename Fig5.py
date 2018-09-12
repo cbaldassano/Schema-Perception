@@ -1,142 +1,96 @@
 import numpy as np
-from deconvolve import deconv
-import deepdish as dd
-import brainiak.eventseg.event
-from scipy.stats import zscore, norm
-from stimulus_annot import stories, schema_type, design_intact, story_run
-from util import data_list, SRM_from_list
 from matplotlib import pyplot as plt
+import deepdish as dd
+from scipy.stats import zscore, norm
+from util import nullZ
+from deconvolve import deconv
+from stimulus_annot import mask, design_intact, design_scrambled, \
+    design_scrambled_event, design_scrambled_story, stories, nStories, clips
 import sys
 
 ROI = sys.argv[1]
-nBoot = int(sys.argv[2])
-SRM_features = 100
-print('Running Fig 5 and 5-1 analysis for ' + ROI + '...')
+nPerm = 1000
+
+print('Running Fig 5 analysis for ' + ROI + '...')
 
 # Load data
 print('  Loading ' + ROI + '...')
-native_D = dd.io.load('../data/Main/' + ROI + '.h5')
-native_subj, story_breaks, story_names = data_list(native_D)
-nSubj = len(native_subj)
+D_scrambled = dd.io.load('../data/Control/' + ROI + '.h5')
+D_intact = dd.io.load('../data/Main/' + ROI + '.h5')
 
-# Accuracies for both cross-validation types
-acc = np.zeros((nBoot, 2))
+dim = D_intact[stories[0]].shape[0]
+nSubj_intact = D_intact[stories[0]].shape[2]
+nSubj_scrambled = D_scrambled[clips[0]].shape[2]
+
+# Regression coefficients for scrambled stimuli
+S_beta = np.zeros((nStories, dim, 4))
+for i in range(len(clips)):
+    S_mean = np.nanmean(D_scrambled[clips[i]], axis=2)
+    beta = zscore(deconv(S_mean, design_scrambled[i]), axis=0, ddof=1)
+    S_beta[design_scrambled_story[i], :, design_scrambled_event[i]] = beta.T
+
+# Compute event correlations between random splits of intact with scrambled
+nSplit = 10
+story_corr_II = np.zeros((nStories, nStories, nSplit))
+story_corr_IS = np.zeros((nStories, nStories, nSplit))
 np.random.seed(0)
-for boot in range(nBoot):
-    print('  Bootstrap ' + str(boot))
-    boot_samp = np.random.randint(0, nSubj, nSubj)
-    native_boot = [native_subj[i] for i in boot_samp]
-    print('    Runing SRM...')
-    D = SRM_from_list(native_boot, story_breaks, story_names, SRM_features)
-    dim = D[stories[0]].shape[0]
+for p in range(nSplit):
+    I1_beta = np.zeros((nStories, dim, 4))
+    I2_beta = np.zeros((nStories, dim, 4))
 
-    print('    Leaving 2 stories out...')
-    # Fit an event model to 7 stories (all but one story from a schema),
-    # then try to find these events in all 9 other stories
-    evcorr = np.empty((16, 16))
-    evcorr[:] = np.nan
-    # Loop over choice of held-out story
-    for loo in range(len(stories)):
-        # Deconvolve event representations from 7 stories
-        same_schema = (schema_type == schema_type[loo])
-        same_schema[loo] = False
-        all_design = np.concatenate(design_intact[same_schema], axis=0)
-        all_D = np.empty((dim, 0))
-        for i in np.where(same_schema)[0]:
-            all_D = np.append(all_D, D[stories[i]].mean(2), axis=1)
-        train_beta = zscore(deconv(all_D, all_design), axis=0, ddof=1)
-        nEvents = train_beta.shape[1]
+    # Deconvolve event representations
+    group_perm = np.random.permutation(nSubj_intact)
+    for i in range(nStories):
+        D_story = D_intact[stories[i]]
+        I1 = D_story[:, :, group_perm[:nSubj_scrambled]]
+        I2 = D_story[:, :, group_perm[nSubj_scrambled:(2*nSubj_scrambled)]]
+        I1_mean = np.nanmean(I1, axis=2)
+        I2_mean = np.nanmean(I2, axis=2)
+        I1_beta[i, :, :] = zscore(deconv(I1_mean, design_intact[i])[:, 1:],
+                                  axis=0, ddof=1)
+        I2_beta[i, :, :] = zscore(deconv(I2_mean, design_intact[i])[:, 1:],
+                                  axis=0, ddof=1)
 
-        # Create event model
-        ev = brainiak.eventseg.event.EventSegment(nEvents)
-        ev.set_event_patterns(train_beta)
-        ev_var = ev.calc_weighted_event_var(all_D.T, all_design, train_beta)
+    # Correlate each event between all stories
+    for ev in range(4):
+        story_corr_II[:, :, p] += (1/4) * \
+            np.dot(I1_beta[:, :, ev], I2_beta[:, :, ev].T)/(dim-1)
+        story_corr_IS[:, :, p] += (1/4) * \
+            np.dot(I1_beta[:, :, ev], S_beta[:, :, ev].T)/(dim-1)
 
-        # Measure fit of event model to the 9 held-out stories
-        diff_schema = np.where(schema_type != schema_type[loo])[0]
-        for j in np.append(loo, diff_schema):
-            pred_labels = ev.find_events(D[stories[j]].mean(2).T, ev_var)[0]
-            pred_mean = np.matmul(D[stories[j]].mean(2), pred_labels)
-            cc = np.corrcoef(train_beta.T, pred_mean.T)[:nEvents, nEvents:]
-            d = np.diag(cc).sum()
-            # Mean of diagonal minus mean of off-diagonal
-            evcorr[loo, j] = d/nEvents - (cc.sum()-d)/(nEvents**2 - nEvents)
 
-    # For pairs of held-out stories (one from each schema),
-    # check whether they are correctly classified
-    for lto_R in range(8):
-        for lto_A in range(8, 16):
-            corr_lto = evcorr[np.ix_([lto_R, lto_A], [lto_R, lto_A])]
-            if (corr_lto[0, 0] + corr_lto[1, 1]) > \
-               (corr_lto[0, 1] + corr_lto[1, 0]):
-                acc[boot, 0] += 1/(8*8)
+# Collapse across splits and symmetrize
+story_corr_II = story_corr_II.mean(2)
+story_corr_IS = story_corr_IS.mean(2)
+story_corr_II = (story_corr_II + story_corr_II.T)/2
+story_corr_IS = (story_corr_IS + story_corr_IS.T)/2
 
-    print('    Leaving one run out...')
-    # Fit an event model for each schena to 3 runs,
-    # then try to find these events in the 4 remaining stories
 
-    # Event correlations for each schema model
-    evcorr = dict()
-    for schema in np.unique(schema_type):
-        evcorr[schema] = np.zeros(len(stories))
+# Compute true and null similarity for all pairs
+WvA_diff = np.zeros(nPerm+1)
+np.random.seed(0)
+SCII_p = story_corr_II.copy()
+SCIS_p = story_corr_IS.copy()
+for p in range(nPerm+1):
+    WvA_II = np.mean([SCII_p[mask == 2].mean(), SCII_p[mask == 3].mean()]) - \
+             np.mean([SCII_p[mask == 4].mean(), SCII_p[mask == 5].mean()])
+    WvA_IS = np.mean([SCIS_p[mask == 2].mean(), SCIS_p[mask == 3].mean()]) - \
+             np.mean([SCIS_p[mask == 4].mean(), SCIS_p[mask == 5].mean()])
 
-    # Loop over choice of held-out run
-    for loro in np.unique(story_run):
-        for schema in np.unique(schema_type):
-            # Deconvolve event representations from 6 stories
-            train = (schema_type == schema) * (story_run != loro)
-            all_design = np.concatenate(design_intact[train], axis=0)
-            all_D = np.empty((dim, 0))
-            for i in np.where(train)[0]:
-                all_D = np.append(all_D, D[stories[i]].mean(2), axis=1)
-            beta = zscore(deconv(all_D, all_design), axis=0, ddof=1)
-            nEvents = beta.shape[1]
+    WvA_diff[p] = WvA_II - WvA_IS
 
-            # Create event model
-            ev = brainiak.eventseg.event.EventSegment(nEvents)
-            ev.set_event_patterns(beta)
-            ev_var = ev.calc_weighted_event_var(all_D.T, all_design, beta)
+    nextperm = np.random.permutation(story_corr_II.shape[0])
+    SCII_p = story_corr_II[np.ix_(nextperm, nextperm)]
+    SCIS_p = story_corr_IS[np.ix_(nextperm, nextperm)]
 
-            # Measure fit of event model to the 4 held-out stories
-            test = np.where(story_run == loro)[0]
-            for j in test:
-                D_story = D[stories[j]]
-                pred_labels = ev.find_events(D_story.mean(2).T, ev_var)[0]
-                pred_mean = np.matmul(D_story.mean(2), pred_labels)
-                cc = np.corrcoef(beta.T, pred_mean.T)[:nEvents, nEvents:]
-                d = np.diag(cc).sum()
-                # Mean of diagonal minus mean of off-diagonal
-                evcorr[schema][j] = d/nEvents - \
-                                    (cc.sum()-d)/(nEvents**2 - nEvents)
-
-        # For pairs of held-out stories (one from each schema),
-        # check whether they are correctly classified
-        for lto_R in np.where((schema_type == 'R')*(story_run == loro))[0]:
-            for lto_A in np.where((schema_type == 'A')*(story_run == loro))[0]:
-                if (evcorr['R'][lto_R] + evcorr['A'][lto_A]) > \
-                   (evcorr['R'][lto_A] + evcorr['A'][lto_R]):
-                    acc[boot, 1] += 1/(len(np.unique(story_run))*2*2)
-
-    print('    Accuracy = %.2f LTO, %.2f LORO' % (acc[boot, 0], acc[boot, 1]))
-
-print('  ' + ROI + ' mean LTO accuracy = ' + str(acc[:, 0].mean()) +
-      ', p = ' + str(norm.sf((acc[:, 0].mean()-0.5)/acc[:, 0].std())))
-print('  ' + ROI + ' mean LORO accuracy = ' + str(acc[:, 1].mean()) +
-      ', p = ' + str(norm.sf((acc[:, 1].mean()-0.5)/acc[:, 1].std())))
+print('  WvA_diff:' + str(norm.sf(nullZ(WvA_diff))))
 
 plt.figure()
-plt.violinplot(acc[:, 0], showextrema=False, showmeans=True)
-plt.plot([0.5, 1.5], [0.5, 0.5])
-plt.ylim(0.2, 1)
-plt.xticks([])
-plt.ylabel('Classification accuracy')
+plt.plot(0, WvA_diff[0], marker='o', markersize=6)
+vp = plt.violinplot(WvA_diff[1:], positions=[0], showextrema=False)
+vp['bodies'][0].set_color('0.8')
+plt.ylabel('Schema effect intact minus scrambled (r)')
+plt.xticks([0], [ROI])
 plt.savefig('../results/Fig5_' + ROI + '.png')
 
-plt.figure()
-plt.violinplot(acc[:, 1], showextrema=False, showmeans=True)
-plt.plot([0.5, 1.5], [0.5, 0.5])
-plt.ylim(0.2, 1)
-plt.xticks([])
-plt.ylabel('Classification accuracy')
-plt.savefig('../results/Fig5-1_' + ROI + '.png')
 print(' ')

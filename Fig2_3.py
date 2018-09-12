@@ -11,12 +11,12 @@ lowess = sm.nonparametric.lowess
 
 ROI = sys.argv[1]
 
-# All SRM dimensions for Fig 2-1, and dimensions for Fig 2
+# All SRM dimensions for Fig 3, and dimension for Fig 2
 SRM_features = [2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50, 100]
 SRM_features_Fig2 = 100
 nPerm = 1000
 
-print('Running Fig 2 and 2-1 analysis for ' + ROI + '...')
+print('Running Fig 2 and 3 analysis for ' + ROI + '...')
 
 # Load data
 print('  Loading ' + ROI + '...')
@@ -114,7 +114,7 @@ for dim_i, dim in enumerate(SRM_features):
     plt.xticks([0, 1], ['All pairs', 'Cross-mod'])
     plt.savefig('../results/Fig2_' + ROI + '.png')
 
-# Plot Fig 2-1 curve
+# Plot Fig 3 curve
 plt.figure(figsize=(10, 6))
 z_smooth = lowess(schema_z, SRM_features)
 plt.plot(z_smooth[:, 0], z_smooth[:, 1])
@@ -126,6 +126,6 @@ plt.xticks(ticks, [str(x) for x in ticks])
 plt.minorticks_off()
 plt.xlabel('SRM Dimensions')
 plt.ylabel('Schema effect (z)')
-plt.savefig('../results/Fig2-1_' + ROI + '.png')
+plt.savefig('../results/Fig3_' + ROI + '.png')
 
 print(' ')
